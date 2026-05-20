@@ -311,6 +311,18 @@
           wordSpan.textContent = word;
           front.appendChild(wordSpan);
 
+          const level = pair[2] || "";
+          const isChallenge = level.trim().toLowerCase() === "challenge";
+
+          if (isChallenge) {
+            const challengeFlag = document.createElement('span');
+            challengeFlag.className = 'challenge-flag';
+            challengeFlag.title = 'Challenge phrase';
+            challengeFlag.setAttribute('aria-label', 'Challenge phrase');
+            challengeFlag.textContent = ' 🔥';
+            front.appendChild(challengeFlag);
+          }
+
           if (isDuplicate(word)) {
             const flag = document.createElement('span');
             flag.className = 'dup-flag';
@@ -527,7 +539,7 @@
           const mission = rows.find(r => r.mission)?.mission || '';
           showMission(mission);
 
-          cards = rows.map(r => [r.phrase, makePhrasePackBack(r)]);
+          cards = rows.map(r => [r.phrase, makePhrasePackBack(r), r.level]);
           duplicateCounts = buildTermCounts(cards);
 
           isFlipped = false;
