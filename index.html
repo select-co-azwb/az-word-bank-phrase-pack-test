@@ -414,12 +414,11 @@
         }
 
         function makePhrasePackBack(row) {
-          const sections = [];
-          if (row.englishDefinition) sections.push(row.englishDefinition);
-          if (row.japaneseSupport) sections.push(`Japanese support: ${row.japaneseSupport}`);
-          if (row.example) sections.push(`Example: ${row.example}`);
-          return sections.join('\n\n');
-        }
+  const sections = [];
+  if (row.japaneseSupport) sections.push(row.japaneseSupport);
+  if (row.example) sections.push(row.example);
+  return sections.join('\n\n');
+}
 
         function parsePhrasePackRows(text) {
           const table = parseTable(text);
