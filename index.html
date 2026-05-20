@@ -39,7 +39,7 @@
       font-size: clamp(18px, 3.2vw, 28px); background: #fff;
       box-shadow: 0 8px 22px rgba(0,0,0,.06);
     }
-    .flashcard-back { transform: rotateY(180deg); background:#fbfbff; }
+    .flashcard-back { transform: rotateY(180deg); background:#fbfbff; white-space: pre-line; }
     .buttons { display:flex; gap:10px; justify-content:center; margin: 10px 0 18px; }
     .buttons button { padding:10px 14px; border-radius:12px; border:1px solid #ccc; cursor:pointer; }
     .study-controls { display:flex; flex-direction:column; gap:8px; align-items:center; margin-top:10px; }
@@ -58,6 +58,28 @@
       justify-content:center;
       align-items:center;
       margin: 12px 0 10px;
+    }
+    .pack-select {
+      display:none;
+      justify-content:center;
+      align-items:center;
+      gap:8px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .mission-box {
+      display:none;
+      max-width:600px;
+      margin:14px auto 8px;
+      padding:12px 14px;
+      border:1px solid #d7e2c8;
+      border-radius:14px;
+      background:#f8fbf4;
+      line-height:1.45;
+    }
+    .mission-box strong {
+      display:block;
+      margin-bottom:4px;
     }
     .helper select,
     .helper button {
@@ -87,9 +109,16 @@
     <h1>Vocabulary Flashcards</h1>
 
     <div>
-      <label for="daySelector">Select Day:</label>
+      <label for="daySelector">Select Set:</label>
       <select id="daySelector"></select>
     </div>
+
+    <div class="pack-select" id="packSelectorWrap">
+      <label for="packSelector">Select Pack:</label>
+      <select id="packSelector"></select>
+    </div>
+
+    <div class="mission-box" id="missionBox"></div>
 
     <!-- NEW: dictionary helper (ABOVE the flashcard) -->
     <div class="helper" id="dictHelper">
@@ -143,7 +172,7 @@
 
         // Allow-list
         const COURSE_DAYS = 24;
-        const EXTRA_TABS = ["A-Z Word Bank", "Everyday Phrasal Verbs", "Business Phrasal Verbs", "Proverbs"];
+        const EXTRA_TABS = ["A-Z Word Bank", "Everyday Phrasal Verbs", "Business Phrasal Verbs", "Proverbs", "Phrase Packs"];
         const ALLOWED = new Set([
           ...Array.from({ length: COURSE_DAYS }, (_, i) => `Day ${i + 1}`),
           ...EXTRA_TABS,
@@ -151,6 +180,9 @@
 
         // ========= 1) Grab UI =========
         const dropdown  = document.getElementById("daySelector");
+        const packSelectorWrap = document.getElementById("packSelectorWrap");
+        const packSelector = document.getElementById("packSelector");
+        const missionBox = document.getElementById("missionBox");
         const flashcard = document.getElementById("flashcard");
         const cardInner = document.getElementById("flashcardInner");
         const front     = document.getElementById("cardFront");
@@ -170,6 +202,7 @@
         const lookupBtn  = document.getElementById('lookupBtn');
 
         let cards = []; let viewIndexes = []; let currentIndex = 0; let isFlipped = false; let shuffleOn = false;
+        let phrasePackRows = [];
 
         // --- Duplicate detection (per current deck) ---
         let duplicateCounts = null;
@@ -198,7 +231,9 @@
 
         // ========= 3) Progress storage + migration =========
         const STORAGE_KEY = 'flashcards_progress_v2';
-        const deckKey = () => `deck_${dropdown.value || 'Default'}`;
+        const deckKey = () => dropdown.value === 'Phrase Packs'
+          ? `pack_${packSelector.value || 'Default'}`
+          : `deck_${dropdown.value || 'Default'}`;
         const cardId = (pair) => `${pair[0] || ''}||${pair[1] || ''}`;
         const loadAll = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; } };
         const saveAll = (data) => localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -331,24 +366,93 @@
         rateLearnedBtn.addEventListener('click', (e)=>{ e.stopPropagation(); rate('learned'); });
 
         // ========= 6) Loader (TSV first; CSV fallback) via Publish-to-web URL =========
-        function parseRows(text) {
-          const rows = text.trim().split(/\r?\n/);
-          if (rows.length <= 1) return [];
-          const useTab = rows[0].includes('\t');
+        function parseCSVLine(line) {
           const out = [];
-          for (let i = 1; i < rows.length; i++) {
-            const line = rows[i]; if (!line) continue;
-            if (useTab) {
-              const parts = line.split('\t');
-              const w = (parts[0] || '').trim();
-              const d = (parts[1] || '').trim();
-              if (w && d) out.push([w, d]);
+          let cur = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            const next = line[i + 1];
+            if (ch === '"' && inQuotes && next === '"') {
+              cur += '"';
+              i++;
+            } else if (ch === '"') {
+              inQuotes = !inQuotes;
+            } else if (ch === ',' && !inQuotes) {
+              out.push(cur);
+              cur = '';
             } else {
-              const j = line.indexOf(',');
-              const w = j >= 0 ? line.slice(0, j).trim() : '';
-              const d = j >= 0 ? line.slice(j + 1).trim() : '';
-              if (w && d) out.push([w, d]);
+              cur += ch;
             }
+          }
+          out.push(cur);
+          return out;
+        }
+
+        function parseTable(text) {
+          const lines = text.trim().split(/\r?\n/).filter(Boolean);
+          if (!lines.length) return [];
+          const useTab = lines[0].includes('\t');
+          return lines.map(line => useTab ? line.split('\t') : parseCSVLine(line));
+        }
+
+        function cleanCell(value) {
+          return (value || '').replace(/^"|"$/g, '').trim();
+        }
+
+        function parseRows(text) {
+          const table = parseTable(text);
+          if (table.length <= 1) return [];
+          const out = [];
+          for (let i = 1; i < table.length; i++) {
+            const parts = table[i];
+            const w = cleanCell(parts[0]);
+            const d = cleanCell(parts[1]);
+            if (w && d) out.push([w, d]);
+          }
+          return out;
+        }
+
+        function makePhrasePackBack(row) {
+          const sections = [];
+          if (row.englishDefinition) sections.push(row.englishDefinition);
+          if (row.japaneseSupport) sections.push(`Japanese support: ${row.japaneseSupport}`);
+          if (row.example) sections.push(`Example: ${row.example}`);
+          return sections.join('\n\n');
+        }
+
+        function parsePhrasePackRows(text) {
+          const table = parseTable(text);
+          if (table.length <= 1) return [];
+
+          const headers = table[0].map(h => cleanCell(h).toLowerCase());
+          const idx = (name) => headers.indexOf(name.toLowerCase());
+
+          const packI = idx('Pack Name');
+          const phraseI = idx('Phrase');
+          const defI = idx('English Definition');
+          const jpI = idx('Japanese Support');
+          const exI = idx('Example');
+          const missionI = idx('Mission');
+          const levelI = idx('Level');
+          const releaseI = idx('Release Date');
+          const audioI = idx('Audio Link');
+
+          const out = [];
+          for (let i = 1; i < table.length; i++) {
+            const parts = table[i];
+            const row = {
+              packName: cleanCell(parts[packI]),
+              phrase: cleanCell(parts[phraseI]),
+              englishDefinition: cleanCell(parts[defI]),
+              japaneseSupport: cleanCell(parts[jpI]),
+              example: cleanCell(parts[exI]),
+              mission: cleanCell(parts[missionI]),
+              level: cleanCell(parts[levelI]),
+              releaseDate: cleanCell(parts[releaseI]),
+              audioLink: cleanCell(parts[audioI]),
+            };
+            if (row.packName && row.phrase) out.push(row);
           }
           return out;
         }
@@ -385,6 +489,94 @@
               console.error('Load error:', err);
               front.textContent = "Error loading data.";
               back.textContent  = "";
+              cardInner.classList.remove("flipped");
+              viewIndexes = [];
+            });
+        }
+
+        function showMission(text) {
+          if (!text) {
+            missionBox.style.display = 'none';
+            missionBox.innerHTML = '';
+            return;
+          }
+          missionBox.innerHTML = '';
+          const title = document.createElement('strong');
+          title.textContent = 'Mission';
+          const body = document.createElement('div');
+          body.textContent = text;
+          missionBox.appendChild(title);
+          missionBox.appendChild(body);
+          missionBox.style.display = 'block';
+        }
+
+        function populatePackSelector(rows) {
+          const names = [...new Set(rows.map(r => r.packName).filter(Boolean))].sort();
+          packSelector.innerHTML = '';
+          for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            packSelector.appendChild(opt);
+          }
+          return names;
+        }
+
+        function loadSelectedPhrasePack() {
+          const selectedPack = packSelector.value;
+          const rows = phrasePackRows.filter(r => r.packName === selectedPack);
+          const mission = rows.find(r => r.mission)?.mission || '';
+          showMission(mission);
+
+          cards = rows.map(r => [r.phrase, makePhrasePackBack(r)]);
+          duplicateCounts = buildTermCounts(cards);
+
+          isFlipped = false;
+          cardInner.classList.remove("flipped");
+          rebuildView(false);
+        }
+
+        function loadPhrasePacksByGid(gid) {
+          if (!gid) {
+            console.error('[Phrase Packs] Missing gid.');
+            front.textContent = "Error loading Phrase Packs.";
+            back.textContent  = "";
+            return;
+          }
+
+          const urlTSV = `${PUBLISH_URL}?gid=${gid}&single=true&output=tsv`;
+          const urlCSV = `${PUBLISH_URL}?gid=${gid}&single=true&output=csv`;
+          console.log('[Phrase Packs] Trying TSV:', urlTSV);
+
+          fetch(urlTSV)
+            .then(r => r.ok ? r.text() : Promise.reject(new Error('TSV not ok')))
+            .catch(() => {
+              console.warn('[Phrase Packs] TSV failed, trying CSV:', urlCSV);
+              return fetch(urlCSV).then(r => {
+                if (!r.ok) throw new Error('CSV not ok');
+                return r.text();
+              });
+            })
+            .then(text => {
+              phrasePackRows = parsePhrasePackRows(text);
+              const packNames = populatePackSelector(phrasePackRows);
+
+              if (!packNames.length) {
+                front.textContent = "No phrase packs found.";
+                back.textContent = "";
+                showMission('');
+                return;
+              }
+
+              packSelectorWrap.style.display = 'flex';
+              packSelector.value = packNames[0];
+              loadSelectedPhrasePack();
+            })
+            .catch(err => {
+              console.error('Phrase Pack load error:', err);
+              front.textContent = "Error loading Phrase Packs.";
+              back.textContent  = "";
+              showMission('');
               cardInner.classList.remove("flipped");
               viewIndexes = [];
             });
@@ -454,7 +646,19 @@
         dropdown.addEventListener("change", () => {
           const gid = dropdown.selectedOptions[0]?.dataset?.gid;
           console.log('[UI] Change →', dropdown.value, 'gid:', gid);
-          if (gid) loadByGid(gid);
+
+          if (dropdown.value === 'Phrase Packs') {
+            packSelectorWrap.style.display = 'flex';
+            loadPhrasePacksByGid(gid);
+          } else {
+            packSelectorWrap.style.display = 'none';
+            showMission('');
+            if (gid) loadByGid(gid);
+          }
+        });
+
+        packSelector.addEventListener("change", () => {
+          loadSelectedPhrasePack();
         });
 
         // ========= 8) Dictionary lookup (direct vs search with heuristics) =========
@@ -526,8 +730,16 @@
 
             const gid = allowedMap[defaultName];
             console.log('[Init] Default deck =', defaultName, 'gid:', gid);
-            if (gid) loadByGid(gid);
-            else {
+            if (gid) {
+              if (defaultName === 'Phrase Packs') {
+                packSelectorWrap.style.display = 'flex';
+                loadPhrasePacksByGid(gid);
+              } else {
+                packSelectorWrap.style.display = 'none';
+                showMission('');
+                loadByGid(gid);
+              }
+            } else {
               front.textContent = "Error loading data.";
               back.textContent  = "";
               console.error('[Init] No gid for defaultName.');
