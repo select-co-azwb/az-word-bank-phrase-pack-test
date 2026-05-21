@@ -47,7 +47,6 @@
   .flashcard-back {
     flex-direction: column;
   }
-    }
     .flashcard-back { transform: rotateY(180deg); background:#fbfbff; white-space: pre-line; }
     .buttons { display:flex; gap:10px; justify-content:center; margin: 10px 0 18px; }
     .buttons button { padding:10px 14px; border-radius:12px; border:1px solid #ccc; cursor:pointer; }
@@ -548,8 +547,36 @@
           missionBox.style.display = 'block';
         }
 
+        function parseReleaseDateForSort(value) {
+          if (!value) return Number.POSITIVE_INFINITY;
+
+          // Google Sheets may publish dates as yyyy-mm-dd, m/d/yyyy, or similar.
+          // Date.parse handles the normal published formats; bad/missing dates go last.
+          const time = Date.parse(value);
+          return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+        }
+
         function populatePackSelector(rows) {
-          const names = [...new Set(rows.map(r => r.packName).filter(Boolean))].sort();
+          const packMap = new Map();
+
+          rows.forEach(row => {
+            if (!row.packName) return;
+
+            const releaseTime = parseReleaseDateForSort(row.releaseDate);
+
+            // Use the earliest release date found for each pack.
+            if (!packMap.has(row.packName) || releaseTime < packMap.get(row.packName)) {
+              packMap.set(row.packName, releaseTime);
+            }
+          });
+
+          const names = Array.from(packMap.entries())
+            .sort((a, b) => {
+              if (a[1] !== b[1]) return a[1] - b[1];
+              return a[0].localeCompare(b[0]);
+            })
+            .map(entry => entry[0]);
+
           packSelector.innerHTML = '';
           for (const name of names) {
             const opt = document.createElement('option');
@@ -663,49 +690,34 @@
           return sheetGIDs;
         }
 
-      const PACK_ORDER = [
-        "Giving Work Updates",
-        "Following Up",
-        "Asking for Help",
-        "Handling Delays",
-        "Explaining Changes"
-      ];
-      
-      function normalizeName(name) {
-        return name.trim().toLowerCase();
-      }
-      
-      function getPackOrderIndex(name) {
-        return PACK_ORDER.map(normalizeName).indexOf(normalizeName(name));
-      }
+        function populateDropdown(map) {
+          dropdown.innerHTML = '';
 
-      // Keep Day tabs in numerical order
-      if (ma && mb) return +ma[1] - +mb[1];
-      if (ma) return -1;
-      if (mb) return 1;
+          const names = Object.keys(map)
+            .filter(name => ALLOWED.has(name))
+            .sort((a, b) => {
+              const ma = a.match(/^Day\s+(\d+)/i);
+              const mb = b.match(/^Day\s+(\d+)/i);
 
-      // Keep Phrase Packs in release order
-      const ia = getPackOrderIndex(a);
-      const ib = getPackOrderIndex(b);
+              // Keep Day 1, Day 2, Day 3, etc. in numerical order.
+              if (ma && mb) return +ma[1] - +mb[1];
+              if (ma) return -1;
+              if (mb) return 1;
 
-      if (ia !== -1 && ib !== -1) return ia - ib;
-      if (ia !== -1) return -1;
-      if (ib !== -1) return 1;
+              // Keep the general set names alphabetical.
+              return a.localeCompare(b);
+            });
 
-      // Fallback alphabetical order
-      return a.localeCompare(b);
-    });
+          console.log('[Discover] Allowed names:', names);
 
-  console.log('[Discover] Allowed names:', names);
-
-  for (const name of names) {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    opt.dataset.gid = map[name];
-    dropdown.appendChild(opt);
-  }
-}
+          for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            opt.dataset.gid = map[name];
+            dropdown.appendChild(opt);
+          }
+        }
 
         dropdown.addEventListener("change", () => {
           const gid = dropdown.selectedOptions[0]?.dataset?.gid;
