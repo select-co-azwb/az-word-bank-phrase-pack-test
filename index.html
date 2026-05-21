@@ -663,21 +663,21 @@
           return sheetGIDs;
         }
 
-        const PACK_ORDER = [
-  "Giving Work Updates",
-  "Following Up",
-  "Asking for Help",
-  "Handling Delays",
-  "Explaining Changes"
-];
-
-function populateDropdown(map) {
-  dropdown.innerHTML = '';
-
-  const names = Object.keys(map)
-    .filter(name => ALLOWED.has(name))
-    .sort((a, b) => {
-      const ma = a.match(/^Day\s+(\d+)/i), mb = b.match(/^Day\s+(\d+)/i);
+      const PACK_ORDER = [
+        "Giving Work Updates",
+        "Following Up",
+        "Asking for Help",
+        "Handling Delays",
+        "Explaining Changes"
+      ];
+      
+      function normalizeName(name) {
+        return name.trim().toLowerCase();
+      }
+      
+      function getPackOrderIndex(name) {
+        return PACK_ORDER.map(normalizeName).indexOf(normalizeName(name));
+      }
 
       // Keep Day tabs in numerical order
       if (ma && mb) return +ma[1] - +mb[1];
@@ -685,8 +685,8 @@ function populateDropdown(map) {
       if (mb) return 1;
 
       // Keep Phrase Packs in release order
-      const ia = PACK_ORDER.indexOf(a);
-      const ib = PACK_ORDER.indexOf(b);
+      const ia = getPackOrderIndex(a);
+      const ib = getPackOrderIndex(b);
 
       if (ia !== -1 && ib !== -1) return ia - ib;
       if (ia !== -1) return -1;
