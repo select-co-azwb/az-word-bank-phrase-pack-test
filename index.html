@@ -24,7 +24,11 @@
       padding-left: calc(24px + env(safe-area-inset-left));
       padding-right: calc(24px + env(safe-area-inset-right));
     }
-
+    .example-text {
+      font-style: italic;
+      margin-top: 1em;
+    }
+    
     h1 { margin-bottom: 12px; }
     label { font-weight: 600; margin-right: 8px; }
     select, button { font-size: 16px; }
@@ -334,7 +338,11 @@
           }
 
           // Back
-          back.textContent = pair[1] || "";
+          if (pair[3] === 'phrasePack') {
+            back.innerHTML = pair[1] || "";
+          } else {
+            back.textContent = pair[1] || "";
+          }
 
           // Keep flip state
           cardInner.classList.toggle("flipped", isFlipped);
@@ -424,13 +432,27 @@
           }
           return out;
         }
-
+        function escapeHTML(str) {
+          return String(str || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+        }
         function makePhrasePackBack(row) {
-  const sections = [];
-  if (row.japaneseSupport) sections.push(row.japaneseSupport);
-  if (row.example) sections.push(row.example);
-  return sections.join('\n\n');
-}
+          const sections = [];
+        
+          if (row.japaneseSupport) {
+            sections.push(`<div>${escapeHTML(row.japaneseSupport)}</div>`);
+          }
+        
+          if (row.example) {
+            sections.push(`<div class="example-text">${escapeHTML(row.example)}</div>`);
+          }
+        
+          return sections.join('');
+        }
 
         function parsePhrasePackRows(text) {
           const table = parseTable(text);
@@ -539,7 +561,7 @@
           const mission = rows.find(r => r.mission)?.mission || '';
           showMission(mission);
 
-          cards = rows.map(r => [r.phrase, makePhrasePackBack(r), r.level]);
+          cards = rows.map(r => [r.phrase, makePhrasePackBack(r), r.level, 'phrasePack']);
           duplicateCounts = buildTermCounts(cards);
 
           isFlipped = false;
