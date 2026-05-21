@@ -663,23 +663,49 @@
           return sheetGIDs;
         }
 
-        function populateDropdown(map) {
-          dropdown.innerHTML = '';
-          const names = Object.keys(map)
-            .filter(name => ALLOWED.has(name))
-            .sort((a, b) => {
-              const ma = a.match(/^Day\s+(\d+)/i), mb = b.match(/^Day\s+(\d+)/i);
-              if (ma && mb) return +ma[1] - +mb[1];
-              if (ma) return -1; if (mb) return 1;
-              return a.localeCompare(b);
-            });
-          console.log('[Discover] Allowed names:', names);
-          for (const name of names) {
-            const opt = document.createElement('option');
-            opt.value = name; opt.textContent = name; opt.dataset.gid = map[name];
-            dropdown.appendChild(opt);
-          }
-        }
+        const PACK_ORDER = [
+  "Giving Work Updates",
+  "Following Up",
+  "Asking for Help",
+  "Handling Delays",
+  "Explaining Changes"
+];
+
+function populateDropdown(map) {
+  dropdown.innerHTML = '';
+
+  const names = Object.keys(map)
+    .filter(name => ALLOWED.has(name))
+    .sort((a, b) => {
+      const ma = a.match(/^Day\s+(\d+)/i), mb = b.match(/^Day\s+(\d+)/i);
+
+      // Keep Day tabs in numerical order
+      if (ma && mb) return +ma[1] - +mb[1];
+      if (ma) return -1;
+      if (mb) return 1;
+
+      // Keep Phrase Packs in release order
+      const ia = PACK_ORDER.indexOf(a);
+      const ib = PACK_ORDER.indexOf(b);
+
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+
+      // Fallback alphabetical order
+      return a.localeCompare(b);
+    });
+
+  console.log('[Discover] Allowed names:', names);
+
+  for (const name of names) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    opt.dataset.gid = map[name];
+    dropdown.appendChild(opt);
+  }
+}
 
         dropdown.addEventListener("change", () => {
           const gid = dropdown.selectedOptions[0]?.dataset?.gid;
